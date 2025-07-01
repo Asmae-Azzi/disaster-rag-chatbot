@@ -9,15 +9,8 @@ import boto3
 from io import BytesIO
 from pdfminer.high_level import extract_text_from_fp # Import for PDF parsing
 
-# --- 1. Configuration: API Keys and AWS Credentials from Streamlit Secrets ---
-# Ensure you have these set in your Streamlit Cloud secrets.toml:
-# openai_api_key="sk-YOUR_OPENAI_API_KEY"
-# aws_access_key_id="YOUR_AWS_ACCESS_KEY_ID"
-# aws_secret_access_key="YOUR_AWS_SECRET_ACCESS_KEY"
-# aws_region_name="your-s3-region" # e.g., "us-east-1" or "eu-central-1"
-# s3_bucket_name="yourname-disaster-docs-rag" # Your S3 bucket name
+# --- 1. Configuration:
 
-# Check if all necessary secrets are set
 required_secrets = ["openai_api_key", "aws_access_key_id", "aws_secret_access_key", "aws_region_name", "s3_bucket_name"]
 for secret in required_secrets:
     if secret not in st.secrets:
@@ -34,7 +27,7 @@ AWS_REGION_NAME = st.secrets["aws_region_name"]
 S3_BUCKET_NAME = st.secrets["s3_bucket_name"]
 
 # --- Function to load documents from S3 ---
-@st.cache_data # Cache the S3 document loading to avoid re-downloading on every rerun
+@st.cache_data # Caching the S3 document loading to avoid re-downloading on every rerun
 def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key, aws_region_name):
     """
     Loads PDF documents from a specified S3 bucket, extracts text, and returns it.
@@ -79,7 +72,7 @@ def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key
 
 # --- 2. RAG System Setup ---
 
-@st.cache_resource # Cache the RAG system to avoid rebuilding on every rerun
+@st.cache_resource # Caching the RAG system to avoid rebuilding on every rerun
 def setup_rag_system(documents_raw_content):
     """
     Sets up the RAG system: chunks documents, creates embeddings,
@@ -103,8 +96,7 @@ def setup_rag_system(documents_raw_content):
     from langchain.docstore.document import Document
     docs = []
     for i, content in enumerate(documents_raw_content):
-        # You might want to extract a more meaningful source from the PDF itself
-        # For now, using a generic S3 Document source
+        # Creating a Document object for each PDF content
         docs.append(Document(page_content=content, metadata={"source": f"S3 PDF Document {i+1}"}))
 
     # 3. Split documents into chunks
@@ -115,9 +107,7 @@ def setup_rag_system(documents_raw_content):
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
     # 5. Build FAISS Vector Store from chunks and embeddings
-    # NOTE: For production with large datasets, consider saving/loading FAISS index
-    # to/from S3, or using a managed vector database like Pinecone/Chroma.
-    # For this MVP, it's built in-memory on app startup.
+    
     st.write("Building FAISS vector store. This might take a while for many documents...")
     vectorstore = FAISS.from_documents(chunks, embeddings)
     st.write("FAISS vector store built.")
