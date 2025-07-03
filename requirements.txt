@@ -5,3 +5,4 @@ faiss-cpu
 tiktoken
 boto3
 pdfminer.six
+sentence-transformers
