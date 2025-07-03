@@ -1,24 +1,34 @@
 import streamlit as st
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+# Import HuggingFaceEmbeddings instead of OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings 
+from langchain_openai import ChatOpenAI # Still use ChatOpenAI for OpenRouter
 from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import os
 import boto3
 from io import BytesIO
-from pdfminer.high_level import extract_text_from_fp # Import for PDF parsing
+from pdfminer.high_level import extract_text_from_fp
 
-# --- 1. Configuration:
+# --- 1. Configuration: API Keys and AWS Credentials from Streamlit Secrets ---
 
-required_secrets = ["openai_api_key", "aws_access_key_id", "aws_secret_access_key", "aws_region_name", "s3_bucket_name"]
+# Check if all necessary secrets are set
+required_secrets = [
+    "openrouter_api_key",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "aws_region_name",
+    "s3_bucket_name"
+]
 for secret in required_secrets:
     if secret not in st.secrets:
         st.error(f"Missing secret: '{secret}'. Please add it to Streamlit secrets.")
         st.stop()
 
-# Set environment variables for LangChain/OpenAI
-os.environ["OPENAI_API_KEY"] = st.secrets["openai_api_key"]
+# Set environment variables for OpenRouter API (for ChatOpenAI)
+os.environ["OPENROUTER_API_KEY"] = st.secrets["openrouter_api_key"]
+OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 
 # AWS S3 Configuration
 AWS_ACCESS_KEY_ID = st.secrets["aws_access_key_id"]
@@ -27,7 +37,7 @@ AWS_REGION_NAME = st.secrets["aws_region_name"]
 S3_BUCKET_NAME = st.secrets["s3_bucket_name"]
 
 # --- Function to load documents from S3 ---
-@st.cache_data # Caching the S3 document loading to avoid re-downloading on every rerun
+@st.cache_data # Cache the S3 document loading to avoid re-downloading on every rerun
 def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key, aws_region_name):
     """
     Loads PDF documents from a specified S3 bucket, extracts text, and returns it.
@@ -53,7 +63,6 @@ def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key
                     st.write(f"Downloading and parsing: {key}")
                     try:
                         obj_data = s3.get_object(Bucket=bucket_name, Key=key)
-                        # Use BytesIO to create a file-like object from the S3 response body
                         with BytesIO(obj_data['Body'].read()) as pdf_file:
                             text_content = extract_text_from_fp(pdf_file)
                             documents_raw_content.append(text_content)
@@ -72,7 +81,7 @@ def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key
 
 # --- 2. RAG System Setup ---
 
-@st.cache_resource # Caching the RAG system to avoid rebuilding on every rerun
+@st.cache_resource # Cache the RAG system to avoid rebuilding on every rerun
 def setup_rag_system(documents_raw_content):
     """
     Sets up the RAG system: chunks documents, creates embeddings,
@@ -96,24 +105,31 @@ def setup_rag_system(documents_raw_content):
     from langchain.docstore.document import Document
     docs = []
     for i, content in enumerate(documents_raw_content):
-        # Creating a Document object for each PDF content
         docs.append(Document(page_content=content, metadata={"source": f"S3 PDF Document {i+1}"}))
 
     # 3. Split documents into chunks
     chunks = text_splitter.split_documents(docs)
     st.write(f"Split {len(documents_raw_content)} S3 PDF documents into {len(chunks)} chunks.")
 
-    # 4. Initialize OpenAI Embeddings (cheapest efficient model)
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    # 4. Initialize HuggingFace Embeddings 
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={'device': 'cpu'} # Ensure it runs on CPU
+    )
+    st.write("HuggingFace Embeddings model loaded.")
 
     # 5. Build FAISS Vector Store from chunks and embeddings
-    
     st.write("Building FAISS vector store. This might take a while for many documents...")
     vectorstore = FAISS.from_documents(chunks, embeddings)
     st.write("FAISS vector store built.")
 
-    # 6. Initialize ChatOpenAI LLM (cost-effective model)
-    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.5)
+    # 6. Initialize ChatOpenAI LLM for DeepSeek via OpenRouter
+    llm = ChatOpenAI(
+        model_name="deepseek/deepseek-v3-0324:free", # Updated model name to a known free, available DeepSeek model
+        temperature=0.5,
+        openai_api_base=OPENROUTER_API_BASE,
+        openai_api_key=os.environ["OPENROUTER_API_KEY"]
+    )
 
     # 7. Create RetrievalQA chain
     qa_template = """
@@ -144,7 +160,7 @@ def setup_rag_system(documents_raw_content):
 
 st.set_page_config(page_title="Disaster Preparedness Chatbot", layout="centered")
 
-st.title("💬 Disaster Preparedness Chatbot")
+st.title("💬 Disaster Preparedness Chatbot (DeepSeek Chat, Free Embeddings)")
 st.markdown(
     """
     Ask me anything about disaster preparedness and resilience based on our curated documents.
@@ -177,26 +193,22 @@ if prompt := st.chat_input("How can I prepare for a hurricane?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.spinner("Thinking..."):
-        # Get response from RAG chain
         response = st.session_state.qa_chain.invoke({"query": prompt})
         answer = response["result"]
         source_documents = response.get("source_documents", [])
         
-        # Extract source information
         sources_info = []
         if source_documents:
             for doc in source_documents:
-                # Use the 'source' metadata we set during document loading
                 if doc.metadata and "source" in doc.metadata:
                     sources_info.append(doc.metadata["source"])
             if sources_info:
-                sources_str = ", ".join(sorted(list(set(sources_info)))) # Use set to avoid duplicates
+                sources_str = ", ".join(sorted(list(set(sources_info))))
             else:
                 sources_str = "No specific source found"
         else:
             sources_str = "No specific source found"
 
-    # Display assistant response in chat history
     with st.chat_message("assistant"):
         st.markdown(answer)
         st.caption(f"Source Documents: {sources_str}")
@@ -204,7 +216,7 @@ if prompt := st.chat_input("How can I prepare for a hurricane?"):
 
 # Add a clear chat button
 if st.button("Clear Chat History"):
-    st.session_state.messages = []
+    st.session_state.messages = [] 
     st.rerun
 
 st.markdown("---")
