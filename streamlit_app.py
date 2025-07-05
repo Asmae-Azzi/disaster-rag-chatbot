@@ -14,6 +14,7 @@ from pdfminer.high_level import extract_text # Changed from extract_text_from_fp
 
 # --- 1. Configuration: API Keys and AWS Credentials from Streamlit Secrets ---
 
+
 # Check if all necessary secrets are set
 required_secrets = [
     "openrouter_api_key",
@@ -171,8 +172,8 @@ st.markdown(
 )
 
 # Initialize chat history in session state if not already present
-if "messages" not in st.session_session: 
-    st.session_session.messages = [] 
+if "messages" not in st.session_state: # Corrected typo here
+    st.session_state.messages = [] # Corrected typo here
 
 # Load documents from S3 and set up RAG chain
 if "qa_chain" not in st.session_state:
