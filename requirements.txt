@@ -5,5 +5,5 @@ langchain-openai
 faiss-cpu
 tiktoken
 boto3
-pdfminer.six
+pdfminer.six==20221105
 sentence-transformers
