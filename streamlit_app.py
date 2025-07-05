@@ -9,7 +9,8 @@ from langchain.prompts import PromptTemplate
 import os
 import boto3
 from io import BytesIO
-from pdfminer.high_level import extract_text_from_fp
+# Change this line:
+from pdfminer.high_level import extract_text # Changed from extract_text_from_fp
 
 # --- 1. Configuration: API Keys and AWS Credentials from Streamlit Secrets ---
 
@@ -64,7 +65,8 @@ def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key
                     try:
                         obj_data = s3.get_object(Bucket=bucket_name, Key=key)
                         with BytesIO(obj_data['Body'].read()) as pdf_file:
-                            text_content = extract_text_from_fp(pdf_file)
+                            # Use extract_text instead of extract_text_from_fp
+                            text_content = extract_text(pdf_file) 
                             documents_raw_content.append(text_content)
                             st.write(f"Successfully parsed: {key}")
                     except Exception as e:
@@ -111,7 +113,8 @@ def setup_rag_system(documents_raw_content):
     chunks = text_splitter.split_documents(docs)
     st.write(f"Split {len(documents_raw_content)} S3 PDF documents into {len(chunks)} chunks.")
 
-    # 4. Initialize HuggingFace Embeddings 
+    # 4. Initialize HuggingFace Embeddings (free, open-source model)
+    # Using a small, efficient model suitable for CPU deployment
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         model_kwargs={'device': 'cpu'} # Ensure it runs on CPU
@@ -125,7 +128,7 @@ def setup_rag_system(documents_raw_content):
 
     # 6. Initialize ChatOpenAI LLM for DeepSeek via OpenRouter
     llm = ChatOpenAI(
-        model_name="deepseek/deepseek-v3-0324:free", # Updated model name to a known free, available DeepSeek model
+        model_name="deepseek/deepseek-v3-0324:free",
         temperature=0.5,
         openai_api_base=OPENROUTER_API_BASE,
         openai_api_key=os.environ["OPENROUTER_API_KEY"]
@@ -168,8 +171,8 @@ st.markdown(
 )
 
 # Initialize chat history in session state if not already present
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "messages" not in st.session_session: 
+    st.session_session.messages = [] 
 
 # Load documents from S3 and set up RAG chain
 if "qa_chain" not in st.session_state:
