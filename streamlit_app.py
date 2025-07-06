@@ -129,7 +129,7 @@ def setup_rag_system(documents_raw_content):
 
     # 6. Initialize ChatOpenAI LLM for DeepSeek via OpenRouter
     llm = ChatOpenAI(
-        model_name="deepseek/deepseek-v3-0324:free",
+        model_name="deepseek/deepseek-chat:free",
         temperature=0.5,
         openai_api_base=OPENROUTER_API_BASE,
         openai_api_key=os.environ["OPENROUTER_API_KEY"]
