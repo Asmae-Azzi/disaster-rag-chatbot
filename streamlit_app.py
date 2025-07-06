@@ -44,7 +44,6 @@ def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key
     """
     Loads PDF documents from a specified S3 bucket, extracts text, and returns it.
     """
-    st.write(f"Connecting to S3 bucket: {bucket_name}...")
     s3 = boto3.client(
         's3',
         aws_access_key_id=aws_access_key_id,
@@ -57,25 +56,18 @@ def load_documents_from_s3(bucket_name, aws_access_key_id, aws_secret_access_key
     try:
         response = s3.list_objects_v2(Bucket=bucket_name)
         if 'Contents' in response:
-            st.write(f"Found {len(response['Contents'])} objects in S3. Processing PDFs...")
             for obj in response['Contents']:
                 key = obj['Key']
                 # Only process .pdf files
                 if key.lower().endswith('.pdf'):
-                    st.write(f"Downloading and parsing: {key}")
                     try:
                         obj_data = s3.get_object(Bucket=bucket_name, Key=key)
                         with BytesIO(obj_data['Body'].read()) as pdf_file:
                             # Use extract_text instead of extract_text_from_fp
                             text_content = extract_text(pdf_file) 
                             documents_raw_content.append(text_content)
-                            st.write(f"Successfully parsed: {key}")
                     except Exception as e:
                         st.error(f"Error parsing PDF '{key}': {e}")
-                else:
-                    st.info(f"Skipping non-PDF file: {key}")
-        else:
-            st.warning(f"No objects found in S3 bucket: {bucket_name}")
     except Exception as e:
         st.error(f"Error listing objects in S3 bucket: {e}")
         st.stop()
@@ -94,7 +86,6 @@ def setup_rag_system(documents_raw_content):
         st.error("No documents loaded to build the RAG system. Please check your S3 bucket and PDF files.")
         st.stop()
 
-    st.write("Initializing RAG system components...")
     
     # 1. Initialize Text Splitter
     text_splitter = RecursiveCharacterTextSplitter(
@@ -112,7 +103,6 @@ def setup_rag_system(documents_raw_content):
 
     # 3. Split documents into chunks
     chunks = text_splitter.split_documents(docs)
-    st.write(f"Split {len(documents_raw_content)} S3 PDF documents into {len(chunks)} chunks.")
 
     # 4. Initialize HuggingFace Embeddings (free, open-source model)
     # Using a small, efficient model suitable for CPU deployment
@@ -120,12 +110,9 @@ def setup_rag_system(documents_raw_content):
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         model_kwargs={'device': 'cpu'} # Ensure it runs on CPU
     )
-    st.write("HuggingFace Embeddings model loaded.")
 
     # 5. Build FAISS Vector Store from chunks and embeddings
-    st.write("Building FAISS vector store. This might take a while for many documents...")
     vectorstore = FAISS.from_documents(chunks, embeddings)
-    st.write("FAISS vector store built.")
 
     # 6. Initialize ChatOpenAI LLM for DeepSeek via OpenRouter
     llm = ChatOpenAI(
@@ -157,17 +144,16 @@ def setup_rag_system(documents_raw_content):
         chain_type_kwargs={"prompt": QA_CHAIN_PROMPT},
         return_source_documents=True
     )
-    st.success("RAG system ready!")
     return qa_chain
 
 # --- 3. Streamlit UI ---
 
 st.set_page_config(page_title="Disaster Preparedness Chatbot", layout="centered")
 
-st.title("💬 Disaster Preparedness Chatbot (DeepSeek Chat, Free Embeddings)")
+st.title("💬 Disaster Preparedness Chatbot")
 st.markdown(
     """
-    Ask me anything about disaster preparedness and resilience based on our curated documents.
+    Ask me anything about disaster preparedness and resilience!
     """
 )
 
@@ -221,7 +207,7 @@ if prompt := st.chat_input("How can I prepare for a hurricane?"):
 # Add a clear chat button
 if st.button("Clear Chat History"):
     st.session_state.messages = [] 
-    st.rerun
+    st.rerun()  # Rerun the app to clear the chat history
 
 st.markdown("---")
 st.info(
